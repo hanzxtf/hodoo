@@ -102,12 +102,12 @@ A scenario is the repo's test (there is no test framework). So:
 
 ## 7. Before saying it works
 
-**`just check` does not lint this directory** - it sweeps `deploy.sh` and `scripts/*.sh`
-only. So the scenarios get no static gate unless you run one yourself:
+**`just check` does not lint this directory** - it is the Rust gate (fmt, clippy,
+tests). So the scenarios get no static gate unless you run one yourself:
 
 ```sh
-bash -n hodoo/scenarios/<script>.sh
-shellcheck -S warning -e SC1010 hodoo/scenarios/<script>.sh
+bash -n scenarios/<script>.sh
+shellcheck -S warning -e SC1010 scenarios/<script>.sh
 ```
 
 `SC1010` is excluded because `hodoo task done <id>` reads as a stray shell keyword to

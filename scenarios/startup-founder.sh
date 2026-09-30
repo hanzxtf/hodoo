@@ -31,15 +31,15 @@
 #
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-HODOO="${HODOO_BIN:-$ROOT/hodoo/target/debug/hodoo}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+HODOO="${HODOO_BIN:-$ROOT/target/debug/hodoo}"
 MARKER="(scenario)"
 
 # This is a script, so it asks for JSON once and reads it with python. A person
 # running `hodoo` by hand gets tables; `show` below unsets this on purpose.
 
 if [ ! -x "$HODOO" ]; then
-  echo "no hodoo binary at $HODOO: run 'cargo build' in $ROOT/hodoo first" >&2
+  echo "no hodoo binary at $HODOO: run 'cargo build' in $ROOT first" >&2
   exit 2
 fi
 cd "$ROOT"

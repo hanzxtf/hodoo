@@ -8,8 +8,9 @@ and chatter.
 workspace so that `hodoo-web` (a Topcoat application) can join them later by
 adding one member.
 
-It talks to a *running* Odoo; the sibling `deploy.sh` in this repository is what
-puts one on a 512 MB VM, and `.env*` is gitignored, so the key stays out of git.
+It talks to a *running* Odoo. The 512 MB VM it was written against is deployed
+from a separate repository (`odoo-512mb`); nothing here deploys it. `.env*` is
+gitignored, so the key stays out of git.
 Start with [Getting a key](#getting-a-key), then the CLI section, then
 [What it encodes](#what-it-encodes-so-callers-do-not-rediscover-it) — that last
 one is the list of Odoo behaviours that will otherwise cost you an afternoon.
@@ -37,9 +38,9 @@ project, task, stage, milestone, user or tag.
 
 ```sh
 # From the repository root, `just` builds it first and passes arguments through:
-just hodoo -- task ls --project acme
-# The recipes: hodoo-check (fmt + clippy + tests), hodoo-test, hodoo-live-test,
-# hodoo-prod-build, hodoo-install, hodoo-doctor, hodoo-clean.
+just run -- task ls --project acme
+# The recipes: check (fmt + clippy + tests), test, live-test, prod-build,
+# install, doctor, clean; plus scenario and icare-dd for the two datasets.
 
 # Either export them, or put them in a .env at (or above) the working directory --
 # a .env at the repository root covers every command below.
@@ -313,8 +314,8 @@ HODOO_LIVE=1 ODOO_URL=... ODOO_API_KEY=... cargo test -- --ignored --nocapture
   backend error says "Technical Documentation users"); otherwise it prints a
   skip instead of failing.
 
-`HODOO_INSECURE=1` accepts a self-signed certificate, which is what
-`configs/nginx-odoo.conf` generates by default in this repository.
+`HODOO_INSECURE=1` accepts a self-signed certificate, which is what the
+`odoo-512mb` nginx config generates by default.
 
 ## A worked example
 

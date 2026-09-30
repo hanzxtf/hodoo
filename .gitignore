@@ -1,0 +1,5 @@
+# Rust build output
+target/
+
+# Credentials: ODOO_URL, ODOO_API_KEY, ODOO_DB live here, never in git
+.env*

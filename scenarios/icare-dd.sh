@@ -30,12 +30,12 @@
 #
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-HODOO="${HODOO_BIN:-$ROOT/hodoo/target/debug/hodoo}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+HODOO="${HODOO_BIN:-$ROOT/target/debug/hodoo}"
 MARKER="(icare-dd)"
 
 if [ ! -x "$HODOO" ]; then
-  echo "no hodoo binary at $HODOO: run 'cargo build' in $ROOT/hodoo first" >&2
+  echo "no hodoo binary at $HODOO: run 'cargo build' in $ROOT first" >&2
   exit 2
 fi
 cd "$ROOT"
