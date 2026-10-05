@@ -262,6 +262,10 @@ pub async fn partner(client: &Client, reference: &Ref) -> hodoo::Result<PartnerI
     }
 }
 
+// ponytail: the project and task lookups fetch 10 substring matches, so an exact
+// name behind 10 longer ones reads as ambiguous (the error says use an id). Search
+// `=ilike` first if that starts to bite.
+
 /// Picks the one candidate a name refers to.
 ///
 /// Exact match wins; a substring match wins if it is the only one; several
@@ -273,7 +277,12 @@ fn pick<T>(
     candidates: impl Iterator<Item = (i64, String)>,
 ) -> hodoo::Result<Id<T>> {
     let wanted_lower = wanted.to_lowercase();
-    let all: Vec<(i64, String)> = candidates.collect();
+    // Filtered here, not trusted to the caller: the stage and milestone lookups
+    // hand over every record of a project, and a one-stage project used to accept
+    // any typo as "the only candidate".
+    let all: Vec<(i64, String)> = candidates
+        .filter(|(_, name)| name.to_lowercase().contains(&wanted_lower))
+        .collect();
 
     if let Some((id, _)) = all
         .iter()
