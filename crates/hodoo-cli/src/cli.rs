@@ -113,7 +113,7 @@ pub struct Global {
     pub url: Option<String>,
 
     /// API key of the user to act as: Preferences > Account Security > New API Key
-    #[arg(long, env = "ODOO_API_KEY", global = true)]
+    #[arg(long, env = "ODOO_API_KEY", hide_env_values = true, global = true)]
     pub api_key: Option<String>,
 
     /// Send X-Odoo-Database; only needed with several databases behind one domain
