@@ -72,6 +72,12 @@ Things that will bite an agent writing commands into a script:
   `{"id":31,"ok":true}` for an update, `{"deleted":31,"ok":true}` for a delete.
   In table mode the confirmation goes to stderr instead, so stdout stays
   parseable either way.
+- **Long text goes through stdin**: `--body -` / `--description -` read it, so
+  a report or an HTML description needs no shell quoting.
+- **Dates without an offset are local time**, and `+3x` or `soon` is an error, not
+  a guess. Pass an RFC 3339 stamp with an offset when a script must be exact.
+- **A filter tag must exist**: `task ls --tag typo` fails with exit 2 and creates
+  nothing; only a real create/update makes a missing tag (`-n` shows it as `(new)`).
 - **`call` takes its body as `--body`**, not `--json` (`--json` is the output
   flag now).
 - **A state write can lose to Odoo's compute**: a task with open dependencies

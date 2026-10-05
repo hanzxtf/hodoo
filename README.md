@@ -149,8 +149,15 @@ with `#[serde(rename = ...)]`.
 ### Dates a person writes
 
 `--due`, `--due-before`, `--start` and `--end` accept `today`, `tomorrow`, `yesterday`,
-`+3d`, `+2w`, `2026-12-01`, or `"2026-12-01 09:00"`. Deadlines come back as `in 3d`,
-`2d ago`, `today`, or a date once they are more than a month away; overdue is red.
+`+3d`, `+2w`, `+5h`, `2026-12-01`, or `"2026-12-01 09:00"`; anything else is refused
+rather than guessed. A time without an offset is your local time (Odoo stores UTC, and
+the CLI converts). Deadlines come back as `in 3d`, `2d ago`, `today` (counted on your
+calendar), or a date once they are more than a month away; overdue is red.
+
+### Long text from stdin
+
+`--body` (on `comment` and `call`) and `--description` take `-` to read stdin, so a
+multi-line note needs no quoting: `git log -5 --oneline | hodoo task comment 31 --body -`.
 
 ## Library
 
