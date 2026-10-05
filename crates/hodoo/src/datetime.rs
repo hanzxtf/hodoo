@@ -31,6 +31,10 @@ pub fn parse_datetime(text: &str) -> Result<DateTime<Utc>> {
     if let Ok(naive) = NaiveDateTime::parse_from_str(text, DATETIME_FORMAT) {
         return Ok(naive.and_utc());
     }
+    // Seconds are optional for people typing a time; Odoo always sends them.
+    if let Ok(naive) = NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M") {
+        return Ok(naive.and_utc());
+    }
     if let Ok(date) = NaiveDate::parse_from_str(text, DATE_FORMAT) {
         return Ok(date.and_time(NaiveTime::MIN).and_utc());
     }

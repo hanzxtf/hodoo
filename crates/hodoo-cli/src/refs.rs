@@ -6,7 +6,7 @@
 //! name fails with the candidates listed, because guessing which "site" was meant is
 //! how data ends up in the wrong project.
 
-use chrono::{DateTime, Duration, NaiveDate, Utc};
+use chrono::{DateTime, Duration, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 use hodoo::{
     Client, Error, Id, MilestoneId, PartnerId, ProjectFilter, ProjectId, ProjectStageFilter,
     ProjectStageId, StageFilter, TaskFilter, TaskId, TaskStageId, UserId,
@@ -324,52 +324,73 @@ fn pick<T>(
 }
 
 /// Parses what a person writes for a date or deadline: `today`, `tomorrow`,
-/// `yesterday`, `+3d`, `+2w`, `2026-12-01`, `2026-12-01 09:00`, or an ISO stamp.
+/// `yesterday`, `+3d`, `+2w`, `+5h`, `2026-12-01`, `2026-12-01 09:00`, or an
+/// RFC 3339 stamp.
+///
+/// A date or time without an offset is the person's local time, since that is
+/// what they meant by "09:00"; it is converted to the UTC Odoo stores.
 ///
 /// # Errors
 ///
 /// [`Error::Config`] listing the accepted forms.
 pub fn when(text: &str) -> hodoo::Result<DateTime<Utc>> {
     let text = text.trim();
-    let today = Utc::now();
-    let named = |offset: i64| {
-        (today + Duration::days(offset))
-            .date_naive()
-            .and_hms_opt(0, 0, 0)
-            .unwrap_or_default()
-            .and_utc()
-    };
-    let span = |unit: Option<char>, amount: i64| match unit {
-        Some('d') | None => Duration::days(amount),
-        Some('w') => Duration::weeks(amount),
-        Some('h') => Duration::hours(amount),
-        // A stray unit letter reads as days, the default, rather than refusing
-        // the deadline over a typo in what is usually `+3`.
-        Some(_) => Duration::days(amount),
+    let now = Utc::now();
+    let not_a_date = || Error::Config {
+        message: format!(
+            "{text:?} is not a date. Try today, tomorrow, +3d, +2w, +5h, 2026-12-01 or \
+             \"2026-12-01 09:00\""
+        ),
     };
 
     if let Some(rest) = text.strip_prefix('+') {
         let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
-        if let Ok(amount) = digits.parse::<i64>() {
-            let unit = rest.chars().nth(digits.len());
-            return Ok(today + span(unit, amount));
+        let amount: i64 = digits.parse().map_err(|_| not_a_date())?;
+        // Anything but one known unit is refused: `+3x` silently meaning three
+        // days is a deadline nobody asked for.
+        return match &rest[digits.len()..] {
+            "" | "d" => Ok(now + Duration::days(amount)),
+            "w" => Ok(now + Duration::weeks(amount)),
+            "h" => Ok(now + Duration::hours(amount)),
+            _ => Err(not_a_date()),
+        };
+    }
+    let today = Local::now().date_naive();
+    let day = match text.to_ascii_lowercase().as_str() {
+        "today" | "now" => return Ok(now),
+        "tomorrow" => today.succ_opt(),
+        "yesterday" => today.pred_opt(),
+        _ => None,
+    };
+    if let Some(day) = day {
+        return Ok(local_to_utc(day.and_time(NaiveTime::MIN)));
+    }
+    if let Ok(stamp) = DateTime::parse_from_rfc3339(text) {
+        return Ok(stamp.with_timezone(&Utc));
+    }
+    for format in [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M",
+    ] {
+        if let Ok(naive) = NaiveDateTime::parse_from_str(text, format) {
+            return Ok(local_to_utc(naive));
         }
     }
-    match text.to_ascii_lowercase().as_str() {
-        "today" | "now" => return Ok(today),
-        "tomorrow" => return Ok(named(1)),
-        "yesterday" => return Ok(named(-1)),
-        _ => {}
+    if let Ok(date) = NaiveDate::parse_from_str(text, "%Y-%m-%d") {
+        return Ok(local_to_utc(date.and_time(NaiveTime::MIN)));
     }
-    if let Ok(stamp) = hodoo::datetime::parse_datetime(text) {
-        return Ok(stamp);
-    }
-    Err(Error::Config {
-        message: format!(
-            "{text:?} is not a date. Try today, tomorrow, +3d, +2w, 2026-12-01 or \
-             \"2026-12-01 09:00\""
-        ),
-    })
+    Err(not_a_date())
+}
+
+/// Local wall-clock time to UTC. A time a DST jump skips is read as UTC rather
+/// than refused: it is an hour out on one night a year, not a failed command.
+fn local_to_utc(naive: NaiveDateTime) -> DateTime<Utc> {
+    Local
+        .from_local_datetime(&naive)
+        .earliest()
+        .map_or_else(|| naive.and_utc(), |local| local.with_timezone(&Utc))
 }
 
 /// A date without a time, for fields Odoo stores as dates.
@@ -379,4 +400,49 @@ pub fn when(text: &str) -> hodoo::Result<DateTime<Utc>> {
 /// [`Error::Config`] when the text is neither a date nor a datetime.
 pub fn date(text: &str) -> hodoo::Result<NaiveDate> {
     hodoo::datetime::parse_date(text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names(list: &[&str]) -> impl Iterator<Item = (i64, String)> {
+        list.iter()
+            .enumerate()
+            .map(|(index, name)| (index as i64 + 1, (*name).to_owned()))
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+
+    #[test]
+    fn a_typo_never_resolves_to_the_only_candidate() {
+        assert!(pick::<()>("Reviw", "task stage", names(&["Review"])).is_err());
+    }
+
+    #[test]
+    fn a_short_name_finds_its_suffixed_stage_among_others() {
+        let stages = names(&["Intake (x)", "Testing (x)", "Findings (x)"]);
+        let id: Id<()> = pick("testing", "task stage", stages).unwrap();
+        assert_eq!(id.get(), 2);
+    }
+
+    #[test]
+    fn a_name_matching_nothing_says_no_match_rather_than_ambiguous() {
+        let error = pick::<()>("zzz", "task stage", names(&["A", "B"])).unwrap_err();
+        assert!(
+            error.to_string().contains("no task stage matches"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn dates_take_the_documented_forms_and_refuse_the_rest() {
+        assert!(when("2026-12-01 09:00").is_ok());
+        assert!(when("2026-12-01").is_ok());
+        assert!(when("+3d").is_ok());
+        assert!(when("+3").is_ok());
+        assert!(when("+3x").is_err());
+        assert!(when("+3dfoo").is_err());
+        assert!(when("soon").is_err());
+    }
 }

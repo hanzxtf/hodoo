@@ -636,8 +636,10 @@ fn inline(value: &Value) -> String {
 /// far away. `None` means no deadline was set.
 #[must_use]
 pub fn human_due(deadline: Option<DateTime<Utc>>, now: DateTime<Utc>) -> Option<(String, Style)> {
-    let deadline = deadline?;
-    let days = (deadline.date_naive() - now.date_naive()).num_days();
+    // Days are counted on the reader's calendar: at 23:00 in UTC+2 a deadline of
+    // 09:00 tomorrow is "tomorrow", even though in UTC it is the same day.
+    let deadline = deadline?.with_timezone(&chrono::Local);
+    let days = (deadline.date_naive() - now.with_timezone(&chrono::Local).date_naive()).num_days();
     let text = match days {
         d if d < -30 => deadline.format("%Y-%m-%d").to_string(),
         -1 => "yesterday".to_owned(),
@@ -768,7 +770,9 @@ mod tests {
             Some(
                 (now + chrono::Duration::days(days))
                     .date_naive()
-                    .and_hms_opt(9, 0, 0)
+                    // Noon on both sides keeps the day count the same in any
+                    // timezone the test happens to run in.
+                    .and_hms_opt(12, 0, 0)
                     .unwrap()
                     .and_utc(),
             )
