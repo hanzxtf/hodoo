@@ -1043,3 +1043,97 @@ async fn a_task_stage_is_created_inside_the_project_that_offers_it() {
         .success()
         .stderr(predicate::str::contains("#13"));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn help_never_prints_the_api_key() {
+    Command::cargo_bin("hodoo")
+        .expect("the binary")
+        .arg("--help")
+        .env("ODOO_API_KEY", "topsecret-key-value")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("topsecret-key-value").not());
+}
+
+/// Answers every call with an empty list, recording `model/method`.
+fn recording_empty_server(calls: Arc<Mutex<Vec<String>>>) -> impl Fn(&Request) -> ResponseTemplate {
+    move |request: &Request| {
+        calls
+            .lock()
+            .expect("lock")
+            .push(request.url.path().to_owned());
+        ResponseTemplate::new(200).set_body_json(json!([]))
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn neither_a_dry_run_nor_a_filter_creates_a_tag() {
+    let server = server().await;
+    let calls = Arc::new(Mutex::new(Vec::<String>::new()));
+    Mock::given(method("POST"))
+        .respond_with(recording_empty_server(Arc::clone(&calls)))
+        .mount(&server)
+        .await;
+
+    hodoo(&server)
+        .args([
+            "-n",
+            "task",
+            "create",
+            "--name",
+            "x",
+            "--project",
+            "49",
+            "--tag",
+            "brandnew",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("brandnew (new)"));
+
+    hodoo(&server)
+        .args(["task", "ls", "--tag", "brandnew"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("no tag matches"));
+
+    let sent = calls.lock().expect("lock").clone();
+    assert!(
+        !sent.iter().any(|url| url.contains("name_create")),
+        "a tag was created: {sent:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_milestone_delete_reports_itself_to_a_script() {
+    let server = server().await;
+    Mock::given(method("POST"))
+        .and(path("/json/2/project.milestone/unlink"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!(true)))
+        .mount(&server)
+        .await;
+
+    hodoo(&server)
+        .args(["milestone", "rm", "12", "-f", "-o", "json"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""deleted":12"#));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_comment_body_can_come_from_stdin() {
+    let server = server().await;
+    Mock::given(method("POST"))
+        .and(path("/json/2/project.task/message_post"))
+        .and(body_partial_json(json!({ "body": "line one\nline two" })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([7])))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    hodoo(&server)
+        .args(["task", "comment", "31", "--body", "-"])
+        .write_stdin("line one\nline two\n")
+        .assert()
+        .success();
+}
