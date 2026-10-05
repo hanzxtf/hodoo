@@ -9,7 +9,7 @@
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use hodoo::{
     Client, Error, Id, MilestoneId, PartnerId, ProjectFilter, ProjectId, ProjectStageFilter,
-    ProjectStageId, StageFilter, TagId, TaskFilter, TaskId, TaskStageId, UserId,
+    ProjectStageId, StageFilter, TaskFilter, TaskId, TaskStageId, UserId,
 };
 
 /// A reference the user gave: either a bare id or a name to look up.
@@ -155,16 +155,6 @@ pub async fn project_stage(client: &Client, reference: &Ref) -> hodoo::Result<Pr
             Ok(chosen)
         }
     }
-}
-
-/// Resolves a tag by name, creating it when it does not exist yet, so
-/// `--tag urgent` works on a fresh database.
-///
-/// # Errors
-///
-/// Any error of the underlying calls.
-pub async fn tag(client: &Client, name: &str) -> hodoo::Result<TagId> {
-    client.tags().ensure(name.trim()).await
 }
 
 /// Resolves a milestone by name inside a project.

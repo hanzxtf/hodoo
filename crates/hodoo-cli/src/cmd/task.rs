@@ -50,7 +50,7 @@ pub async fn ls(ctx: &Ctx, args: &TaskLsArgs) -> Result<(), Failure> {
             open_only: args.open,
             state: args.state.map(state_of),
             name_contains: args.name.clone(),
-            tags: tags_of(ctx, &args.tags).await?,
+            tags: tags_of(ctx, &args.tags, false).await?,
             deadline_before,
             parent: match &args.parent {
                 Some(text) => Some(refs::task(&ctx.client, &Ref::parse(text)).await?),
@@ -611,8 +611,9 @@ async fn apply(
         fields.tags = Some(Vec::new());
         preview.insert("tags".into(), json!("none"));
     } else if !args.tags.is_empty() {
-        fields.tags = Some(tags_of(ctx, &args.tags).await?);
-        preview.insert("tags".into(), json!(args.tags.join(", ")));
+        let (ids, said) = cmd::tags_to_write(ctx, &args.tags).await?;
+        fields.tags = Some(ids);
+        preview.insert("tags".into(), json!(said));
     }
     if let Some(text) = &args.parent {
         let id = refs::task(&ctx.client, &Ref::parse(text)).await?;

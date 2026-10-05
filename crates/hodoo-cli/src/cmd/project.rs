@@ -28,7 +28,7 @@ pub async fn ls(ctx: &Ctx, args: &ProjectLsArgs) -> Result<(), Failure> {
             Some(text) => Some(refs::project_stage(&ctx.client, &Ref::parse(text)).await?),
             None => None,
         },
-        tags: tags_of(ctx, &args.tags).await?,
+        tags: tags_of(ctx, &args.tags, false).await?,
         order: args.order.clone(),
         limit: limit_of(args.limit),
         offset: offset_of(args.offset),
@@ -559,8 +559,9 @@ async fn apply(
         preview.insert("description".into(), json!(plain_text(description)));
     }
     if !args.tags.is_empty() {
-        fields.tags = Some(tags_of(ctx, &args.tags).await?);
-        preview.insert("tags".into(), json!(args.tags.join(", ")));
+        let (ids, said) = cmd::tags_to_write(ctx, &args.tags).await?;
+        fields.tags = Some(ids);
+        preview.insert("tags".into(), json!(said));
     }
     if let Some(start) = &args.start {
         let date = refs::date(start)?;

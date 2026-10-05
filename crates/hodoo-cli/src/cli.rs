@@ -350,7 +350,7 @@ pub struct ProjectLsArgs {
     /// Only projects in this stage (id or name)
     #[arg(long, value_name = "STAGE")]
     pub stage: Option<String>,
-    /// Only projects carrying this tag; repeatable
+    /// Only projects carrying this tag; repeated, any of them
     #[arg(long = "tag", value_name = "TAG")]
     pub tags: Vec<String>,
     /// Only projects I manage
@@ -593,7 +593,7 @@ pub struct TaskLsArgs {
     /// Only tasks whose name contains this
     #[arg(value_name = "TEXT")]
     pub name: Option<String>,
-    /// Only tasks carrying this tag; repeatable
+    /// Only tasks carrying this tag; repeated, any of them
     #[arg(long = "tag", value_name = "TAG")]
     pub tags: Vec<String>,
     /// Only tasks due before this: today, +7d, 2026-12-01

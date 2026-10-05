@@ -23,7 +23,6 @@ use serde_json::{Value, json};
 use crate::Failure;
 use crate::cli::Global;
 use crate::output::{ColorChoice, Column, Output, Table, human_due, plain_text};
-use crate::refs;
 
 /// Everything a command needs: where to talk, and how to show it.
 pub struct Ctx {
@@ -304,18 +303,63 @@ pub fn as_json<T: serde::Serialize>(value: &T) -> Value {
     serde_json::to_value(value).unwrap_or(Value::Null)
 }
 
-/// Resolves tag names, creating the ones that do not exist yet, so `--tag urgent`
-/// works on a fresh database.
+/// Resolves tag names. With `create`, a missing tag is created so `--tag urgent`
+/// works on a fresh database; without it (a filter, or a dry run, neither of which
+/// may write) a missing tag is an error naming it.
+///
+/// # Errors
+///
+/// Any error of the underlying tag search or create, and [`Failure::Usage`] for a
+/// tag that does not exist when `create` is off.
+pub async fn tags_of(
+    ctx: &Ctx,
+    tags: &[String],
+    create: bool,
+) -> Result<Vec<Id<hodoo::Tag>>, Failure> {
+    let mut ids = Vec::new();
+    for tag in tags {
+        let tag = tag.trim();
+        let id = if create {
+            ctx.client.tags().ensure(tag).await?
+        } else {
+            ctx.client.tags().find(tag).await?.ok_or_else(|| {
+                Failure::Usage(format!(
+                    "no tag matches {tag:?}. List what exists with `hodoo tag ls`"
+                ))
+            })?
+        };
+        ids.push(id);
+    }
+    Ok(ids)
+}
+
+/// Tags for a create or update, plus how the preview should say them.
+///
+/// A dry run sends nothing, and creating a missing tag is sending something, so a
+/// dry run only looks the tags up and marks the ones a real run would create.
 ///
 /// # Errors
 ///
 /// Any error of the underlying tag search or create.
-pub async fn tags_of(ctx: &Ctx, tags: &[String]) -> Result<Vec<Id<hodoo::Tag>>, Failure> {
-    let mut ids = Vec::new();
-    for tag in tags {
-        ids.push(refs::tag(&ctx.client, tag).await?);
+pub async fn tags_to_write(
+    ctx: &Ctx,
+    tags: &[String],
+) -> Result<(Vec<Id<hodoo::Tag>>, String), Failure> {
+    if !ctx.dry_run {
+        return Ok((tags_of(ctx, tags, true).await?, tags.join(", ")));
     }
-    Ok(ids)
+    let mut ids = Vec::new();
+    let mut said = Vec::new();
+    for tag in tags {
+        match ctx.client.tags().find(tag.trim()).await? {
+            Some(id) => {
+                ids.push(id);
+                said.push(tag.clone());
+            }
+            None => said.push(format!("{tag} (new)")),
+        }
+    }
+    Ok((ids, said.join(", ")))
 }
 
 /// `--limit 0` means "no limit".

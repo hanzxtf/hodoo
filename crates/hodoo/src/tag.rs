@@ -54,13 +54,23 @@ impl<'a> Tags<'a> {
             .await
     }
 
-    /// The id of a tag by exact name, creating it when it does not exist yet.
+    /// The id of a tag by name, ignoring case, or `None` when there is none.
+    ///
+    /// Searching without creating is what a filter or a dry run needs: neither may
+    /// write to the server.
     ///
     /// # Errors
     ///
     /// Any error of [`Client::call`].
-    pub async fn ensure(&self, name: &str) -> Result<TagId> {
-        let domain: Value = json!([["name", "=", name]]);
+    pub async fn find(&self, name: &str) -> Result<Option<TagId>> {
+        // `=ilike` rather than `=`: `--tag Urgent` meaning a second tag next to
+        // `urgent` is a duplicate nobody asked for. Its pattern characters are
+        // escaped so a tag called `50%` does not match `50 anything`.
+        let pattern = name
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let domain: Value = json!([["name", "=ilike", pattern]]);
         let existing: Vec<Tag> = self
             .client
             .call_as(
@@ -69,8 +79,17 @@ impl<'a> Tags<'a> {
                 query::search(domain, FIELDS, Some(1), None, None),
             )
             .await?;
-        if let Some(tag) = existing.into_iter().next() {
-            return Ok(tag.id);
+        Ok(existing.into_iter().next().map(|tag| tag.id))
+    }
+
+    /// The id of a tag by name (ignoring case), creating it when it does not exist yet.
+    ///
+    /// # Errors
+    ///
+    /// Any error of [`Client::call`].
+    pub async fn ensure(&self, name: &str) -> Result<TagId> {
+        if let Some(id) = self.find(name).await? {
+            return Ok(id);
         }
 
         let created = self
