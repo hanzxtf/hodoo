@@ -37,6 +37,18 @@ Stages:
   of its project. A project's stage (`--stage` on a project, `hodoo project stages`) is
   one of a handful the whole server shares. Different models, both by name or id.";
 
+/// Reads a text argument, or stdin when it is `-`, so a long or multi-line
+/// message (an agent's report, an HTML description) needs no shell quoting.
+fn text_or_stdin(text: &str) -> Result<String, String> {
+    if text != "-" {
+        return Ok(text.to_owned());
+    }
+    let mut read = String::new();
+    std::io::Read::read_to_string(&mut std::io::stdin(), &mut read)
+        .map_err(|error| format!("could not read stdin: {error}"))?;
+    Ok(read.trim_end().to_owned())
+}
+
 /// Manage Odoo 19 projects, tasks and everything around them.
 #[derive(Debug, Parser)]
 #[command(
@@ -326,8 +338,8 @@ pub enum ProjectCmd {
         /// Project id or name
         #[arg(value_name = "PROJECT")]
         project: String,
-        /// The message
-        #[arg(long, value_name = "TEXT")]
+        /// The message; `-` reads it from stdin
+        #[arg(long, value_name = "TEXT", value_parser = text_or_stdin)]
         body: String,
         /// A note only internal users see, instead of a comment
         #[arg(long)]
@@ -382,8 +394,8 @@ pub struct ProjectFieldArgs {
     /// Project stage, e.g. "In Progress"
     #[arg(long, value_name = "STAGE")]
     pub stage: Option<String>,
-    /// Description, as HTML
-    #[arg(long, value_name = "HTML")]
+    /// Description, as HTML; `-` reads it from stdin
+    #[arg(long, value_name = "HTML", value_parser = text_or_stdin)]
     pub description: Option<String>,
     /// Tag (name or id); repeatable: replaces the project's tags
     #[arg(long = "tag", value_name = "TAG")]
@@ -521,14 +533,15 @@ pub enum TaskCmd {
     #[command(
         long_about = "Plain text; Odoo escapes it. --internal keeps it to internal \
                             users.\n\nExamples:\n  hodoo task comment 31 --body \"blocked on the \
-                            certificate\" --internal"
+                            certificate\" --internal\n  git log -5 --oneline | hodoo task comment 31 \
+                            --body -"
     )]
     Comment {
         /// Task id or name
         #[arg(value_name = "TASK")]
         task: String,
-        /// The message
-        #[arg(long, value_name = "TEXT")]
+        /// The message; `-` reads it from stdin
+        #[arg(long, value_name = "TEXT", value_parser = text_or_stdin)]
         body: String,
         /// A note only internal users see, instead of a comment
         #[arg(long)]
@@ -661,8 +674,8 @@ pub struct TaskFieldArgs {
     /// Milestone (id, or a name within the project)
     #[arg(long, value_name = "MILESTONE")]
     pub milestone: Option<String>,
-    /// Description, as HTML
-    #[arg(long, value_name = "HTML")]
+    /// Description, as HTML; `-` reads it from stdin
+    #[arg(long, value_name = "HTML", value_parser = text_or_stdin)]
     pub description: Option<String>,
 }
 
@@ -952,8 +965,8 @@ pub struct CallArgs {
     /// Method, e.g. search_read
     #[arg(value_name = "METHOD")]
     pub method: String,
-    /// Named arguments, as a JSON object
-    #[arg(long, value_name = "JSON")]
+    /// Named arguments, as a JSON object; `-` reads it from stdin
+    #[arg(long, value_name = "JSON", value_parser = text_or_stdin)]
     pub body: Option<String>,
     /// Record ids to run it on, comma separated
     #[arg(long, value_delimiter = ',', value_name = "ID,ID")]
