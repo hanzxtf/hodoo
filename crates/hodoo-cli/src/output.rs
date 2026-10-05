@@ -52,6 +52,8 @@ pub enum ColorChoice {
 pub struct Output {
     mode: Mode,
     color: bool,
+    /// Colour for notes and hints, which go to stderr.
+    stderr_color: bool,
     pretty: bool,
     headers: bool,
     quiet: bool,
@@ -88,20 +90,23 @@ impl Output {
         // Precedence follows the conventions a terminal already honours: an
         // explicit flag wins, then NO_COLOR/TERM=dumb suppress and CLICOLOR_FORCE
         // forces, and only then does "is stdout a terminal" decide.
-        let color = match color_flag.unwrap_or(ColorChoice::Auto) {
+        // Decided per stream: `2>log` with stdout on a terminal must not fill the
+        // log with escape codes.
+        let color_on = |is_tty: bool| match color_flag.unwrap_or(ColorChoice::Auto) {
             ColorChoice::Always => true,
             ColorChoice::Never => false,
             ColorChoice::Auto => {
                 let requested = std::env::var_os("CLICOLOR_FORCE").is_some_and(|v| !v.is_empty());
                 let suppressed = std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty())
                     || std::env::var("TERM").is_ok_and(|term| term == "dumb");
-                requested || (stdout_is_tty && !suppressed)
+                requested || (is_tty && !suppressed)
             }
         };
 
         Ok(Self {
             mode,
-            color: color && mode == Mode::Table,
+            color: color_on(stdout_is_tty) && mode == Mode::Table,
+            stderr_color: color_on(std::io::stderr().is_terminal()),
             pretty,
             headers: !no_headers,
             quiet,
@@ -291,7 +296,7 @@ impl Output {
             return Ok(());
         }
         let mut stderr = std::io::stderr().lock();
-        writeln!(stderr, "{}", self.dim(text))
+        writeln!(stderr, "{}", self.dim_on_stderr(text))
     }
 
     /// A follow-up suggestion for a human, e.g. `run hodoo task show 31 to see it`.
@@ -305,7 +310,7 @@ impl Output {
             return Ok(());
         }
         let mut stderr = std::io::stderr().lock();
-        writeln!(stderr, "{}", self.dim(&format!("hint: {text}")))
+        writeln!(stderr, "{}", self.dim_on_stderr(&format!("hint: {text}")))
     }
 
     /// Paints text, and does nothing when colour is off.
@@ -321,6 +326,15 @@ impl Output {
     #[must_use]
     pub fn dim(self, text: &str) -> String {
         self.paint(text, Style::Dim)
+    }
+
+    /// Dim text for stderr, coloured by stderr's own setting.
+    fn dim_on_stderr(self, text: &str) -> String {
+        if self.stderr_color {
+            Style::Dim.code().to_owned() + text + "\x1b[0m"
+        } else {
+            text.to_owned()
+        }
     }
 
     /// Bold text, for table headers and titles.
@@ -672,11 +686,28 @@ pub fn plain_text(html: &str) -> String {
     for character in html.chars() {
         match character {
             '<' => in_tag = true,
-            '>' => in_tag = false,
+            // A tag is a break between words: `a<br>b` and `</p><p>` are two words.
+            '>' => {
+                in_tag = false;
+                text.push(' ');
+            }
             _ if !in_tag => text.push(character),
             _ => {}
         }
     }
+    // Odoo escapes what it is given, so a comment reading `don't` comes back as
+    // `don&#39;t`. `&amp;` goes last so `&amp;lt;` stays the text `&lt;`.
+    let text = [
+        ("&nbsp;", " "),
+        ("&lt;", "<"),
+        ("&gt;", ">"),
+        ("&quot;", "\""),
+        ("&#39;", "'"),
+        ("&#x27;", "'"),
+        ("&amp;", "&"),
+    ]
+    .iter()
+    .fold(text, |text, (entity, plain)| text.replace(entity, plain));
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
@@ -689,6 +720,7 @@ mod tests {
         Output {
             mode: Mode::Table,
             color,
+            stderr_color: false,
             pretty: false,
             headers: true,
             quiet: false,
@@ -794,6 +826,8 @@ mod tests {
             plain_text("<p>Hero, navigation,<br/> footer.</p>"),
             "Hero, navigation, footer."
         );
+        assert_eq!(plain_text("<p>a</p><p>b<br>c</p>"), "a b c");
+        assert_eq!(plain_text("don&#39;t &amp; &amp;lt;"), "don't & &lt;");
     }
 
     #[test]

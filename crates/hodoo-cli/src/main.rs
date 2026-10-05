@@ -221,8 +221,12 @@ fn report(failure: &Failure, json: bool, pretty: bool, verbose: bool) -> std::io
         return writeln!(stderr, "{text}");
     }
     writeln!(stderr, "hodoo: {}", failure.message())?;
-    if verbose && let Some(traceback) = failure.traceback() {
-        writeln!(stderr, "{traceback}")?;
+    // Nested rather than a let-chain: let-chains need Rust 1.88 and the
+    // workspace promises 1.85.
+    if verbose {
+        if let Some(traceback) = failure.traceback() {
+            writeln!(stderr, "{traceback}")?;
+        }
     }
     Ok(())
 }

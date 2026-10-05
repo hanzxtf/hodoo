@@ -118,6 +118,7 @@ pub async fn run(ctx: &Ctx, command: &MilestoneCmd) -> Result<(), Failure> {
                 .milestones()
                 .delete(hodoo::MilestoneId::new(*milestone))
                 .await?;
+            ctx.out.removed(*milestone)?;
             ctx.out.note(&format!("deleted  milestone #{milestone}"))?;
             Ok(())
         }
