@@ -77,7 +77,7 @@ doctor:
     echo "HODOO_OUTPUT=${HODOO_OUTPUT:-table (default)}"
     if [ -x '{{ debug_bin }}' ]; then
       printf '%-12s' 'server'
-      if '{{ debug_bin }}' -q version 2>/dev/null; then
+      if '{{ debug_bin }}' -q odoo-version 2>/dev/null; then
         printf '%-12s' 'identity'
         '{{ debug_bin }}' -q whoami -o json 2>/dev/null |
           python3 -c 'import json,sys; d=json.load(sys.stdin); print(f"{d["name"]} (uid {d["uid"]})")' ||

@@ -172,7 +172,7 @@ that follows the same conventions: marker-based teardown, assertions as it build
 
 | Step | Command |
 |---|---|
-| prove credentials | `hodoo whoami -o json`, `hodoo version` |
+| prove credentials | `hodoo whoami -o json`, `hodoo odoo-version` |
 | counterparties | `hodoo call res.partner create --body '{"vals_list":[...]}'` |
 | project | `hodoo project create --name ... --visibility employees --milestones --dependencies` |
 | columns | `hodoo project task-stages create --name ... --project ... --sequence N [--fold]` |

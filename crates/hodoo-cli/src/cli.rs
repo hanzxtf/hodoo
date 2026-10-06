@@ -10,7 +10,7 @@ use clap_complete::Shell;
 /// What the top-level help says after the flags.
 const TOP_HELP: &str = "\
 Getting started:
-  hodoo version                          the server's Odoo version; no key needed
+  hodoo odoo-version                     the server's Odoo version; no key needed
   hodoo whoami                           who the key is, and on which server
   hodoo project ls                       what is there
   hodoo task create --name \"x\" --project acme
@@ -156,8 +156,18 @@ pub enum Command {
     )]
     Whoami,
 
-    /// Show the server's Odoo version; needs no API key
+    /// Show hodoo's own version, the same as --version
     Version,
+
+    /// Show the server's Odoo version; needs no API key
+    #[command(
+        name = "odoo-version",
+        long_about = "Asks the server for its Odoo version over GET /web/version, which \
+                            needs no API key, so it is the cheapest way to check a server is \
+                            reachable.\n\nExamples:\n  hodoo odoo-version\n  hodoo odoo-version \
+                            --url https://odoo.example.com -o json"
+    )]
+    OdooVersion,
 
     /// Projects
     #[command(subcommand)]

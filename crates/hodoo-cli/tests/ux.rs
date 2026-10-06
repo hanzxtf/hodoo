@@ -1137,3 +1137,39 @@ async fn a_comment_body_can_come_from_stdin() {
         .assert()
         .success();
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn version_is_the_clients_and_odoo_version_is_the_servers() {
+    // `version` and `--version` say the same thing, and neither needs a server.
+    let flag = Command::cargo_bin("hodoo")
+        .expect("the binary")
+        .arg("--version")
+        .env_remove("ODOO_URL")
+        .output()
+        .expect("runs");
+    let command = Command::cargo_bin("hodoo")
+        .expect("the binary")
+        .arg("version")
+        .env_remove("ODOO_URL")
+        .output()
+        .expect("runs");
+    assert!(flag.status.success() && command.status.success());
+    assert_eq!(flag.stdout, command.stdout);
+    assert_eq!(
+        String::from_utf8_lossy(&command.stdout).trim(),
+        format!("hodoo {}", env!("CARGO_PKG_VERSION"))
+    );
+
+    let server = server().await;
+    Mock::given(method("GET"))
+        .and(path("/web/version"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "version": "19.0" })))
+        .mount(&server)
+        .await;
+    hodoo(&server)
+        .args(["odoo-version", "-o", "json"])
+        .env_remove("ODOO_API_KEY")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""version":"19.0""#));
+}

@@ -66,7 +66,7 @@ or missing name is an error listing the candidates.
 
 ```
 hodoo whoami                        # who the key is, on which server
-hodoo version                       # the server's Odoo version; needs no key
+hodoo odoo-version                  # the server's Odoo version; needs no key
 
 hodoo project ls [--customer acme] [--mine] [--tag website]
 hodoo project show <project>        # detail block: dates, stages, counts, chatter

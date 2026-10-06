@@ -1,4 +1,4 @@
-//! `hodoo whoami` and `hodoo version`: is the connection what I think it is?
+//! `hodoo whoami` and `hodoo odoo-version`: is the connection what I think it is?
 
 use serde_json::{Value, json};
 
@@ -64,12 +64,12 @@ pub async fn whoami(ctx: &Ctx, url: &str) -> Result<(), Failure> {
     Ok(ctx.out.show(table.render(ctx.out).trim_end())?)
 }
 
-/// `hodoo version`: the server's Odoo version, without needing a key.
+/// `hodoo odoo-version`: the server's Odoo version, without needing a key.
 ///
 /// # Errors
 ///
 /// [`Failure::Usage`] when there is no server to ask; any transport error otherwise.
-pub async fn version(ctx: &Ctx, url: &str) -> Result<(), Failure> {
+pub async fn odoo_version(ctx: &Ctx, url: &str) -> Result<(), Failure> {
     let version = ctx.client.version().await?;
     if ctx.out.mode() == Mode::Json {
         return Ok(ctx

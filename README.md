@@ -47,7 +47,8 @@ just run -- task ls --project acme
 export ODOO_URL=https://odoo.example.com
 export ODOO_API_KEY=...
 
-hodoo version                       # needs no key at all
+hodoo version                       # this client's version, same as --version
+hodoo odoo-version                  # the server's Odoo version; needs no key at all
 hodoo whoami                        # proves url, certificate and key in one call
 hodoo project ls                    # what is there, as a table
 hodoo project stages ls             # the project stages, and how many projects sit in each

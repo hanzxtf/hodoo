@@ -139,10 +139,16 @@ async fn main() -> ExitCode {
 
 async fn run(args: &Cli) -> Result<(), Failure> {
     let global = &args.global;
-    // Version needs no key, so it is answered before a client is built.
+    // `version` is `--version` spelled as a command: clap renders both, so they
+    // cannot drift apart, and neither needs a server.
     if matches!(args.command, Command::Version) {
+        let mut stdout = std::io::stdout().lock();
+        return Ok(write!(stdout, "{}", Cli::command().render_version())?);
+    }
+    // The server's version needs no key, so it is answered before a client is built.
+    if matches!(args.command, Command::OdooVersion) {
         let ctx = Ctx::new(global)?;
-        return cmd::account::version(&ctx, &ctx.url()).await;
+        return cmd::account::odoo_version(&ctx, &ctx.url()).await;
     }
     if let Command::Completions(args) = &args.command {
         return cmd::completions::run(args);
@@ -151,7 +157,9 @@ async fn run(args: &Cli) -> Result<(), Failure> {
     let ctx = Ctx::new(global)?;
     match &args.command {
         Command::Whoami => cmd::account::whoami(&ctx, &ctx.url()).await,
-        Command::Version => unreachable!("handled above, before the client is built"),
+        Command::Version | Command::OdooVersion => {
+            unreachable!("handled above, before the client is built")
+        }
         Command::Project(command) => project(&ctx, command).await,
         Command::Task(command) => task(&ctx, command).await,
         Command::Milestone(command) => cmd::milestone::run(&ctx, command).await,
@@ -274,7 +282,15 @@ mod tests {
             let expected = expected.replace("ODDO_URL", "ODOO_URL");
             assert!(help.contains(&expected), "help is missing {expected:?}");
         }
-        for command in ["project", "task", "call", "completions", "board"] {
+        for command in [
+            "project",
+            "task",
+            "call",
+            "completions",
+            "board",
+            "version",
+            "odoo-version",
+        ] {
             let sub = Cli::command().find_subcommand(command).cloned();
             assert!(sub.is_some(), "help has no {command} subcommand");
         }

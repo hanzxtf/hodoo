@@ -297,7 +297,7 @@ down() {
 
 up() {
   auth
-  note "acting as uid $AGENT on Odoo $("$HODOO" version | field .version)"
+  note "acting as uid $AGENT on Odoo $("$HODOO" odoo-version | field .version)"
 
   # Rebuilding rather than duplicating: the names are stable, so a second `up`
   # would collide with the first. The residue check counts stages and tags as

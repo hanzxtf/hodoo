@@ -97,7 +97,7 @@ output uses **Odoo's** field names (`date_deadline`, `user_ids`,
 `privacy_visibility`, `type_ids`) in both directions, which is what
 `#[serde(rename)]` on the read structs is for.
 
-`hodoo version --url <server>` needs no API key and is the cheapest way to check
+`hodoo odoo-version --url <server>` needs no API key and is the cheapest way to check
 a server is reachable; `hodoo whoami` proves url, certificate and key together
 (it answers `res.users/context_get`, whose `uid` is the key's user). Failures
 exit `1` (Odoo/transport) or `2` (usage/config) with a JSON object on stderr; a
