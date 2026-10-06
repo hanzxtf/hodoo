@@ -17,7 +17,9 @@ Getting started:
 
 Credentials, in order of precedence:
   --url/--api-key/--db  ·  $ODOO_URL/$ODOO_API_KEY/$ODOO_DB  ·  a .env above the
-  working directory. Create a key in Odoo under Preferences > Account Security.
+  working directory  ·  ~/.config/hodoo/env ($XDG_CONFIG_HOME), the one an installed
+  hodoo uses from anywhere; keep it chmod 600. Create a key in Odoo under
+  Preferences > Account Security.
 
 Output:
   A table for people, JSON for scripts. `-o json` (or HODOO_OUTPUT=json) makes every

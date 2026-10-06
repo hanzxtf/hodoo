@@ -89,7 +89,9 @@ Things that will bite an agent writing commands into a script:
 - Names that match several records are an error listing them, never a guess.
 
 Credentials resolve flag, then process environment (`ODOO_URL`, `ODOO_API_KEY`,
-`ODOO_DB`), then a `.env` at or above the working directory. `.env` is
+`ODOO_DB`), then a `.env` at or above the working directory, then the per-user
+`~/.config/hodoo/env` (what the installed binary uses anywhere; hodoo warns
+unless it is `chmod 600`). `.env` is
 gitignored and read into a map rather than exported: `std::env::set_var` is
 unsafe in edition 2024 and the crate forbids unsafe code. The same layering is
 available to library callers as `Config::from_env()` plus `hodoo::dotenv`. JSON

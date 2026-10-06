@@ -2,7 +2,9 @@
 //!
 //! The environment always wins: a value set in the process environment (and
 //! therefore a command-line flag, or the shell's `export`) is never overridden
-//! by the file. [`resolve`] is the layering, in one place.
+//! by a file. Below it, a project's `.env` wins over the per-user file
+//! ([`user_file`]), which is what makes an installed binary work from any
+//! directory. [`resolve`] and [`load_layered`] are the layering, in one place.
 //!
 //! Nothing here mutates the process environment: `std::env::set_var` is unsafe
 //! in edition 2024 and this crate forbids unsafe code, so a file is read into a
@@ -87,6 +89,54 @@ pub fn load(start: impl AsRef<Path>) -> std::io::Result<Option<BTreeMap<String, 
     }
 }
 
+/// The per-user file, `$XDG_CONFIG_HOME/hodoo/env` or `~/.config/hodoo/env`,
+/// whether or not it exists.
+///
+/// Same `KEY=value` format as a `.env`. It is what an installed `hodoo` reads when
+/// the working directory has no `.env` above it, like `gh` or `aws` reading their
+/// files under the home directory.
+#[must_use]
+pub fn user_file() -> Option<PathBuf> {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))?;
+    Some(base.join("hodoo").join("env"))
+}
+
+/// The per-user file with the nearest `.env` at or above `start` laid over it.
+///
+/// # Errors
+///
+/// Any [`std::io::Error`] from reading a file that was found.
+pub fn load_layered(start: impl AsRef<Path>) -> std::io::Result<BTreeMap<String, String>> {
+    let mut values = match user_file().filter(|path| path.is_file()) {
+        Some(path) => read(path)?,
+        None => BTreeMap::new(),
+    };
+    values.extend(load(start)?.unwrap_or_default());
+    Ok(values)
+}
+
+/// Whether a credentials file can be read by anyone but its owner.
+///
+/// The file holds an API key, so group- or world-readable is worth a warning,
+/// as `ssh` gives for a private key. Always `false` off Unix, where the mode
+/// bits do not exist.
+#[must_use]
+pub fn readable_by_others(path: impl AsRef<Path>) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path).is_ok_and(|meta| meta.permissions().mode() & 0o077 != 0)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        false
+    }
+}
+
 fn unquote(value: &str) -> String {
     // Only a matching opening and closing quote is a delimiter; a value that
     // merely contains or starts with a quote keeps it, rather than losing a
@@ -144,6 +194,19 @@ mod tests {
             Some("from the file")
         );
         assert_eq!(resolve("HODOO_NOT_ANYWHERE", &file), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_others_can_read_is_flagged() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = std::env::temp_dir().join(format!("hodoo-perm-{}", std::process::id()));
+        std::fs::write(&path, "ODOO_API_KEY=x\n").expect("write");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).expect("chmod");
+        assert!(readable_by_others(&path));
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).expect("chmod");
+        assert!(!readable_by_others(&path));
+        std::fs::remove_file(&path).expect("cleanup");
     }
 
     #[test]

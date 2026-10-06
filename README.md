@@ -136,11 +136,29 @@ Configuration resolves in this order, first hit wins:
 2. the process environment (`ODOO_URL`, `ODOO_API_KEY`, `ODOO_DB`, `HODOO_OUTPUT`)
 3. a `.env` file at or above the working directory (up to four levels), read for the
    same names
+4. the per-user file `~/.config/hodoo/env` (`$XDG_CONFIG_HOME/hodoo/env`), same format:
+   what an installed `hodoo` reads from any directory
+
+### Installed: credentials for every directory
+
+A `.env` only covers the directory it sits in. For the installed binary, put the
+credentials in the per-user file, readable by you alone (hodoo warns if anyone else
+can read it, as `ssh` does for a key):
+
+```sh
+mkdir -p ~/.config/hodoo
+install -m 600 /dev/null ~/.config/hodoo/env
+$EDITOR ~/.config/hodoo/env      # ODOO_URL=https://... and ODOO_API_KEY=...
+hodoo whoami                     # from anywhere
+```
+
+A key that lives in a password manager never has to touch disk: export it per shell,
+e.g. `export ODOO_API_KEY="$(pass show odoo/api-key)"`, which wins over both files.
 
 A `.env` is read into a map and consulted explicitly; the process environment is never
 mutated (`std::env::set_var` needs `unsafe` in edition 2024, and this crate forbids
-unsafe code). `Config::from_env()` covers steps 1-2 for library callers; `hodoo::dotenv`
-covers step 3.
+unsafe code). `Config::from_env()` covers steps 1-2 for library callers;
+`hodoo::dotenv::load_layered` covers steps 3-4.
 
 In `-o json`, keys are **Odoo's own field names** (`date_deadline`, `user_ids`,
 `privacy_visibility`, `type_ids`), so the output lines up with the model documentation

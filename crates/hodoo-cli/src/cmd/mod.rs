@@ -46,7 +46,16 @@ impl Ctx {
     /// [`Failure::Usage`] when the invocation cannot work - no server, a bad output
     /// format, an unknown colour - which is why those exit 2 rather than 1.
     pub fn new(global: &Global) -> Result<Self, Failure> {
-        let file = hodoo::dotenv::load(".").map(|file| file.unwrap_or_default())?;
+        let file = hodoo::dotenv::load_layered(".")?;
+        if let Some(path) = hodoo::dotenv::user_file()
+            .filter(|path| path.is_file() && hodoo::dotenv::readable_by_others(path))
+        {
+            // A security warning, so not silenced by -q or JSON mode.
+            eprintln!(
+                "hodoo: warning: {} holds an API key and others can read it; run chmod 600 on it",
+                path.display()
+            );
+        }
 
         let url = global
             .url
@@ -54,7 +63,8 @@ impl Ctx {
             .or_else(|| hodoo::dotenv::resolve("ODOO_URL", &file))
             .ok_or_else(|| {
                 Failure::Usage(
-                    "no server to talk to. Pass --url, set ODOO_URL, or put ODOO_URL in a .env"
+                    "no server to talk to. Pass --url, set ODOO_URL, or put ODOO_URL in \
+                     ~/.config/hodoo/env (or a .env in this directory or above)"
                         .to_owned(),
                 )
             })?;

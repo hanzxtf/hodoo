@@ -73,8 +73,20 @@ fn odoo_waiting_task() -> Value {
     task
 }
 
-fn hodoo(server: &MockServer) -> Command {
+/// The binary, blind to the developer's own `~/.config/hodoo/env`: without this a
+/// test about missing credentials would find the real ones and pass for the
+/// wrong reason, or talk to the real server.
+fn bare() -> Command {
     let mut command = Command::cargo_bin("hodoo").expect("the binary");
+    command.env(
+        "XDG_CONFIG_HOME",
+        std::env::temp_dir().join("hodoo-test-no-config"),
+    );
+    command
+}
+
+fn hodoo(server: &MockServer) -> Command {
+    let mut command = bare();
     command
         .env("ODOO_URL", server.uri())
         .env("ODOO_API_KEY", "secret")
@@ -359,7 +371,7 @@ async fn an_odoo_error_is_one_sentence_on_stderr_and_exit_one() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_missing_credential_says_what_to_do_about_it() {
-    let mut command = Command::cargo_bin("hodoo").expect("the binary");
+    let mut command = bare();
     command
         .current_dir(std::env::temp_dir())
         .env_remove("ODOO_URL")
@@ -473,16 +485,14 @@ async fn call_is_the_escape_hatch_and_reads_well() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn completions_and_help_need_no_server_at_all() {
-    Command::cargo_bin("hodoo")
-        .expect("the binary")
+    bare()
         .args(["completions", "bash"])
         .env_remove("ODOO_URL")
         .assert()
         .success()
         .stdout(predicate::str::contains("complete -F"));
 
-    Command::cargo_bin("hodoo")
-        .expect("the binary")
+    bare()
         .arg("--help")
         .assert()
         .success()
@@ -490,16 +500,14 @@ async fn completions_and_help_need_no_server_at_all() {
         .stdout(predicate::str::contains("hodoo task create --name"));
 
     // No arguments at all explains itself on stderr, and says so with exit 2.
-    Command::cargo_bin("hodoo")
-        .expect("the binary")
+    bare()
         .assert()
         .code(2)
         .stderr(predicate::str::contains("Usage:"))
         .stderr(predicate::str::contains("hodoo task create --name"));
 
     // A typo is guessed at by clap.
-    Command::cargo_bin("hodoo")
-        .expect("the binary")
+    bare()
         .args(["projct", "ls"])
         .assert()
         .code(2)
@@ -507,8 +515,7 @@ async fn completions_and_help_need_no_server_at_all() {
 
     // `board` answers differently per mode, which a script has to know before it
     // counts lines of JSON: the help says so.
-    Command::cargo_bin("hodoo")
-        .expect("the binary")
+    bare()
         .args(["board", "--help"])
         .assert()
         .success()
@@ -1046,8 +1053,7 @@ async fn a_task_stage_is_created_inside_the_project_that_offers_it() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn help_never_prints_the_api_key() {
-    Command::cargo_bin("hodoo")
-        .expect("the binary")
+    bare()
         .arg("--help")
         .env("ODOO_API_KEY", "topsecret-key-value")
         .assert()
@@ -1141,14 +1147,12 @@ async fn a_comment_body_can_come_from_stdin() {
 #[tokio::test(flavor = "multi_thread")]
 async fn version_is_the_clients_and_odoo_version_is_the_servers() {
     // `version` and `--version` say the same thing, and neither needs a server.
-    let flag = Command::cargo_bin("hodoo")
-        .expect("the binary")
+    let flag = bare()
         .arg("--version")
         .env_remove("ODOO_URL")
         .output()
         .expect("runs");
-    let command = Command::cargo_bin("hodoo")
-        .expect("the binary")
+    let command = bare()
         .arg("version")
         .env_remove("ODOO_URL")
         .output()
@@ -1172,4 +1176,50 @@ async fn version_is_the_clients_and_odoo_version_is_the_servers() {
         .assert()
         .success()
         .stdout(predicate::str::contains(r#""version":"19.0""#));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_installed_hodoo_finds_its_credentials_from_any_directory() {
+    let server = server().await;
+    Mock::given(method("GET"))
+        .and(path("/web/version"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "version": "19.0" })))
+        .mount(&server)
+        .await;
+
+    let config = std::env::temp_dir().join(format!("hodoo-xdg-{}", std::process::id()));
+    std::fs::create_dir_all(config.join("hodoo")).expect("config dir");
+    let file = config.join("hodoo").join("env");
+    std::fs::write(
+        &file,
+        format!("ODOO_URL={}\nODOO_API_KEY=k\n", server.uri()),
+    )
+    .expect("write");
+
+    // No ODOO_* in the environment and no .env above the working directory: only
+    // the per-user file can supply the server.
+    let mut command = Command::cargo_bin("hodoo").expect("the binary");
+    command
+        .current_dir(std::env::temp_dir())
+        .env("XDG_CONFIG_HOME", &config)
+        .env_remove("ODOO_URL")
+        .env_remove("ODOO_API_KEY")
+        .env_remove("ODOO_DB")
+        .args(["odoo-version", "-o", "json"]);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).expect("chmod");
+        command
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(r#""version":"19.0""#))
+            .stderr(predicate::str::contains("chmod 600"));
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).expect("chmod");
+        command
+            .assert()
+            .success()
+            .stderr(predicate::str::is_empty());
+    }
+    std::fs::remove_dir_all(&config).expect("cleanup");
 }
