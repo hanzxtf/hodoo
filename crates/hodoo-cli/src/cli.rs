@@ -55,7 +55,9 @@ fn text_or_stdin(text: &str) -> Result<String, String> {
 #[derive(Debug, Parser)]
 #[command(
     name = "hodoo",
-    version,
+    // The commit next to the number, so `hodoo --version` on any machine names
+    // the exact source it was built from (`-dirty`: built with uncommitted changes).
+    version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("HODOO_COMMIT"), ")"),
     about = "Manage Odoo 19 projects, tasks, task stages, milestones and tags",
     long_about = "Talk to an Odoo 19 server over its JSON-2 API: projects, tasks, task \
                   stages, tags, milestones, subtasks, dependencies and chatter.\n\n\

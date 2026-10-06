@@ -1161,7 +1161,11 @@ async fn version_is_the_clients_and_odoo_version_is_the_servers() {
     assert_eq!(flag.stdout, command.stdout);
     assert_eq!(
         String::from_utf8_lossy(&command.stdout).trim(),
-        format!("hodoo {}", env!("CARGO_PKG_VERSION"))
+        format!(
+            "hodoo {} ({})",
+            env!("CARGO_PKG_VERSION"),
+            env!("HODOO_COMMIT")
+        )
     );
 
     let server = server().await;
