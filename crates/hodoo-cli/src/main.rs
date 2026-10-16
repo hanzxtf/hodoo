@@ -153,6 +153,11 @@ async fn run(args: &Cli) -> Result<(), Failure> {
     if let Command::Completions(args) = &args.command {
         return cmd::completions::run(args);
     }
+    // Saving credentials is how a key gets onto a machine in the first place, so
+    // it is answered before a client is built too.
+    if let Command::Config { command } = &args.command {
+        return cmd::config::run(global, command);
+    }
 
     let ctx = Ctx::new(global)?;
     match &args.command {
@@ -167,6 +172,7 @@ async fn run(args: &Cli) -> Result<(), Failure> {
         Command::Board(args) => cmd::board::run(&ctx, args).await,
         Command::Call(args) => cmd::call::run(&ctx, args).await,
         Command::Completions(_) => unreachable!("handled above"),
+        Command::Config { .. } => unreachable!("handled above, before the client is built"),
     }
 }
 
@@ -288,6 +294,7 @@ mod tests {
             "call",
             "completions",
             "board",
+            "config",
             "version",
             "odoo-version",
         ] {

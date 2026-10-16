@@ -19,7 +19,8 @@ Credentials, in order of precedence:
   --url/--api-key/--db  ·  $ODOO_URL/$ODOO_API_KEY/$ODOO_DB  ·  a .env above the
   working directory  ·  ~/.config/hodoo/env ($XDG_CONFIG_HOME), the one an installed
   hodoo uses from anywhere; keep it chmod 600. Create a key in Odoo under
-  Preferences > Account Security.
+  Preferences > Account Security, then save it once:
+  hodoo config url https://odoo.example.com  ·  hodoo config api-key <key>
 
 Output:
   A table for people, JSON for scripts. `-o json` (or HODOO_OUTPUT=json) makes every
@@ -41,7 +42,7 @@ Stages:
 
 /// Reads a text argument, or stdin when it is `-`, so a long or multi-line
 /// message (an agent's report, an HTML description) needs no shell quoting.
-fn text_or_stdin(text: &str) -> Result<String, String> {
+pub(crate) fn text_or_stdin(text: &str) -> Result<String, String> {
     if text != "-" {
         return Ok(text.to_owned());
     }
@@ -172,6 +173,22 @@ pub enum Command {
                             --url https://odoo.example.com -o json"
     )]
     OdooVersion,
+
+    /// Save credentials for later runs
+    #[command(
+        long_about = "Writes the server URL and the API key to the per-user file \
+                            (~/.config/hodoo/env, or $XDG_CONFIG_HOME/hodoo/env), which is what an \
+                            installed hodoo reads from any directory. Existing lines are kept, and \
+                            the file is made readable by you alone.\n\nNothing else changes: a \
+                            --url flag, ODOO_URL in the environment or a .env above the working \
+                            directory still win over this file.\n\nExamples:\n  hodoo config url \
+                            https://odoo.example.com\n  hodoo config api-key c8b1d0f4...\n  pass \
+                            show odoo/api-key | hodoo config api-key -"
+    )]
+    Config {
+        #[command(subcommand)]
+        command: ConfigCmd,
+    },
 
     /// Projects
     #[command(subcommand)]
@@ -993,4 +1010,34 @@ pub struct CompletionsArgs {
     /// Which shell to print a completion script for
     #[arg(value_name = "SHELL")]
     pub shell: Shell,
+}
+
+/// Credentials to save for later runs.
+#[derive(Debug, Subcommand)]
+pub enum ConfigCmd {
+    /// Save the server URL to ~/.config/hodoo/env
+    #[command(
+        long_about = "Examples:\n  hodoo config url https://odoo.example.com\n  hodoo config \
+                            url http://192.168.1.10:8069 -o json\n\nThe URL needs a scheme: \
+                            http:// or https://."
+    )]
+    Url {
+        /// Base URL of the server, e.g. https://odoo.example.com
+        #[arg(value_name = "URL")]
+        url: String,
+    },
+
+    /// Save an API key to ~/.config/hodoo/env
+    #[command(
+        long_about = "The key comes from Odoo: Preferences > Account Security > New API \
+                            Key. It is written to the per-user file, so no shell export is needed \
+                            afterwards.\n\nPass - to read the key from stdin, which keeps it out of \
+                            the shell's history.\n\nExamples:\n  hodoo config api-key \
+                            c8b1d0f4...\n  pass show odoo/api-key | hodoo config api-key -"
+    )]
+    ApiKey {
+        /// The key itself, or - to read it from stdin
+        #[arg(value_name = "KEY")]
+        api_key: String,
+    },
 }

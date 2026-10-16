@@ -1227,3 +1227,82 @@ async fn an_installed_hodoo_finds_its_credentials_from_any_directory() {
     }
     std::fs::remove_dir_all(&config).expect("cleanup");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn config_writes_the_credentials_an_installed_hodoo_reads() {
+    let config = std::env::temp_dir().join(format!("hodoo-config-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&config);
+    let file = config.join("hodoo").join("env");
+
+    // The first command a fresh install needs: no server, no key, no file yet.
+    bare()
+        .env("XDG_CONFIG_HOME", &config)
+        .args(["config", "url", "https://odoo.example.com"])
+        .assert()
+        .success()
+        .stdout(predicate::str::is_empty())
+        .stderr(predicate::str::contains("saved ODOO_URL"));
+
+    // The key can arrive on stdin, so it stays out of the shell's history.
+    bare()
+        .env("XDG_CONFIG_HOME", &config)
+        .args(["config", "api-key", "-", "-o", "json"])
+        .write_stdin("s3cret\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"key\":\"ODOO_API_KEY\""))
+        .stdout(predicate::str::contains("\"ok\":true"))
+        .stdout(predicate::str::contains("s3cret").not())
+        .stderr(predicate::str::contains("s3cret").not());
+
+    assert_eq!(
+        std::fs::read_to_string(&file).expect("read"),
+        "ODOO_URL=https://odoo.example.com\nODOO_API_KEY=s3cret\n"
+    );
+
+    // Writing the same key again replaces it rather than piling up lines.
+    bare()
+        .env("XDG_CONFIG_HOME", &config)
+        .args(["config", "url", "https://other.example.com"])
+        .assert()
+        .success();
+    let text = std::fs::read_to_string(&file).expect("read");
+    assert_eq!(text.matches("ODOO_URL=").count(), 1);
+    assert!(text.contains("ODOO_URL=https://other.example.com\n"));
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&file)
+            .expect("metadata")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "a file holding a key must be private");
+    }
+
+    // A URL the client could not use is refused before anything is written, and
+    // an empty key is a mistake rather than a credential.
+    for args in [
+        vec!["config", "url", "odoo.example.com"],
+        vec!["config", "api-key", ""],
+    ] {
+        bare()
+            .env("XDG_CONFIG_HOME", &config)
+            .args(&args)
+            .assert()
+            .code(2);
+    }
+    assert_eq!(std::fs::read_to_string(&file).expect("read"), text);
+
+    // -n shows the work and writes nothing.
+    let before = std::fs::read_to_string(&file).expect("read");
+    bare()
+        .env("XDG_CONFIG_HOME", &config)
+        .args(["config", "-n", "url", "https://dry.example.com"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("would save ODOO_URL"));
+    assert_eq!(std::fs::read_to_string(&file).expect("read"), before);
+
+    std::fs::remove_dir_all(&config).expect("cleanup");
+}

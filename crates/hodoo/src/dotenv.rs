@@ -39,17 +39,23 @@ pub fn parse(text: &str) -> BTreeMap<String, String> {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        let line = line.strip_prefix("export ").unwrap_or(line);
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        let key = key.trim();
-        if key.is_empty() || key.contains(char::is_whitespace) {
-            continue;
+        if let Some((key, value)) = assignment(line) {
+            values.insert(key.to_owned(), unquote(value.trim()));
         }
-        values.insert(key.to_owned(), unquote(value.trim()));
     }
     values
+}
+
+/// The `KEY=value` a line assigns, or `None` for a comment or a line that
+/// assigns nothing.
+///
+/// One definition of what an assignment looks like, shared by [`parse`] and
+/// [`set`], so writing a file cannot produce a line the reader would skip.
+fn assignment(line: &str) -> Option<(&str, &str)> {
+    let line = line.strip_prefix("export ").unwrap_or(line);
+    let (key, value) = line.split_once('=')?;
+    let key = key.trim();
+    (!key.is_empty() && !key.contains(char::is_whitespace)).then_some((key, value))
 }
 
 /// Reads a `.env` file.
@@ -102,6 +108,58 @@ pub fn user_file() -> Option<PathBuf> {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))?;
     Some(base.join("hodoo").join("env"))
+}
+
+/// Sets `key` to `value` in a `.env` file, creating the file and its directory
+/// if either is missing.
+///
+/// Every other line is kept as it was, comments included, because the same file
+/// may hold credentials this function knows nothing about. The result is chmod
+/// 600 on Unix: the file holds an API key, the same file that gets a warning
+/// when someone else can read it.
+///
+/// # Errors
+///
+/// Any [`std::io::Error`] from creating the directory or writing the file.
+pub fn set(path: impl AsRef<Path>, key: &str, value: &str) -> std::io::Result<()> {
+    let path = path.as_ref();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let existing = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error),
+    };
+    let mut kept: Vec<&str> = existing
+        .lines()
+        .filter(|line| assignment(line.trim()).map(|(found, _)| found) != Some(key))
+        .collect();
+    // The assignment goes last: a bare value the reader trims stays as written.
+    let written = format!("{key}={}", quote(value));
+    kept.push(&written);
+    let text = format!("{}\n", kept.join("\n"));
+
+    std::fs::write(path, text)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
+/// Quotes a value that a bare write would not read back unchanged: one with
+/// whitespace at either end, or one that itself starts and ends with a quote,
+/// which [`unquote`] would strip.
+fn quote(value: &str) -> String {
+    let wrapped = |quote: char| value.starts_with(quote) && value.ends_with(quote);
+    let bare_reads_back = value.trim() == value && !wrapped('"') && !wrapped('\'');
+    if bare_reads_back {
+        return value.to_owned();
+    }
+    let delimiter = if value.contains('\'') { '"' } else { '\'' };
+    format!("{delimiter}{value}{delimiter}")
 }
 
 /// The per-user file with the nearest `.env` at or above `start` laid over it.
@@ -207,6 +265,82 @@ mod tests {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).expect("chmod");
         assert!(!readable_by_others(&path));
         std::fs::remove_file(&path).expect("cleanup");
+    }
+
+    #[test]
+    fn setting_a_key_creates_the_file_and_its_directory() {
+        let root = std::env::temp_dir().join(format!("hodoo-set-{}", std::process::id()));
+        let path = root.join("hodoo").join("env");
+        assert!(!path.exists());
+
+        set(&path, "ODOO_URL", "https://odoo.example.com").expect("set");
+
+        let parsed = read(&path).expect("read");
+        assert_eq!(
+            parsed.get("ODOO_URL").map(String::as_str),
+            Some("https://odoo.example.com")
+        );
+        std::fs::remove_dir_all(&root).expect("cleanup");
+    }
+
+    #[test]
+    fn setting_a_key_again_replaces_it_and_keeps_the_rest() {
+        let root = std::env::temp_dir().join(format!("hodoo-set-again-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("hodoo")).expect("temp dir");
+        let path = root.join("hodoo").join("env");
+        std::fs::write(
+            &path,
+            "# mine\nODOO_URL=https://old.example.com\nODOO_DB=odoo\n",
+        )
+        .expect("write");
+
+        set(&path, "ODOO_URL", "https://new.example.com").expect("set");
+
+        let text = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(
+            text,
+            "# mine\nODOO_DB=odoo\nODOO_URL=https://new.example.com\n"
+        );
+        std::fs::remove_dir_all(&root).expect("cleanup");
+    }
+
+    #[test]
+    fn a_value_that_needs_quoting_reads_back_unchanged() {
+        let root = std::env::temp_dir().join(format!("hodoo-set-quote-{}", std::process::id()));
+        let path = root.join("env");
+
+        for value in [" spaced ", "'already quoted'", "a\tb", "plain-key-abc123"] {
+            set(&path, "ODOO_API_KEY", value).expect("set");
+            assert_eq!(
+                read(&path)
+                    .expect("read")
+                    .get("ODOO_API_KEY")
+                    .map(String::as_str),
+                Some(value),
+                "{value:?} did not survive the write"
+            );
+        }
+        std::fs::remove_dir_all(&root).expect("cleanup");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_written_file_is_readable_by_its_owner_alone() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("hodoo-set-mode-{}", std::process::id()));
+        let path = root.join("env");
+        std::fs::create_dir_all(&root).expect("temp dir");
+        std::fs::write(&path, "ODOO_API_KEY=x\n").expect("write");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).expect("chmod");
+
+        set(&path, "ODOO_API_KEY", "y").expect("set");
+
+        let mode = std::fs::metadata(&path)
+            .expect("metadata")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
+        std::fs::remove_dir_all(&root).expect("cleanup");
     }
 
     #[test]

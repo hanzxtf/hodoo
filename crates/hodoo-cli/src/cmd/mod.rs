@@ -8,6 +8,7 @@ pub mod account;
 pub mod board;
 pub mod call;
 pub mod completions;
+pub mod config;
 pub mod milestone;
 pub mod project;
 pub mod stage;
@@ -86,27 +87,9 @@ impl Ctx {
             config = config.with_db(db);
         }
 
-        let color = match global.color.as_deref() {
-            None | Some("auto") => None,
-            Some("always") => Some(ColorChoice::Always),
-            Some("never") => Some(ColorChoice::Never),
-            Some(other) => {
-                return Err(Failure::Usage(format!(
-                    "--color {other:?} is not a choice: try auto, always or never"
-                )));
-            }
-        };
-
         Ok(Self {
             client: Client::new(config)?,
-            out: Output::resolve(
-                global.output.as_deref(),
-                global.json,
-                color,
-                global.no_headers,
-                global.quiet,
-                global.pretty,
-            )?,
+            out: output_of(global)?,
             dry_run: global.dry_run,
             no_input: global.no_input,
             url,
@@ -118,6 +101,36 @@ impl Ctx {
     pub fn url(&self) -> String {
         self.url.clone()
     }
+}
+
+/// The output settings a set of global flags asks for.
+///
+/// Split out of [`Ctx::new`] because `hodoo config` renders without ever building
+/// a client, and one definition of `--color`/`-o` keeps the two answers alike.
+///
+/// # Errors
+///
+/// [`Failure::Usage`] for an output format or a colour that is not a choice.
+pub fn output_of(global: &Global) -> Result<Output, Failure> {
+    let color = match global.color.as_deref() {
+        None | Some("auto") => None,
+        Some("always") => Some(ColorChoice::Always),
+        Some("never") => Some(ColorChoice::Never),
+        Some(other) => {
+            return Err(Failure::Usage(format!(
+                "--color {other:?} is not a choice: try auto, always or never"
+            )));
+        }
+    };
+    Output::resolve(
+        global.output.as_deref(),
+        global.json,
+        color,
+        global.no_headers,
+        global.quiet,
+        global.pretty,
+    )
+    .map_err(Failure::Usage)
 }
 
 /// The user behind the API key, for `--mine` and `--assignee me`.

@@ -91,7 +91,9 @@ Things that will bite an agent writing commands into a script:
 Credentials resolve flag, then process environment (`ODOO_URL`, `ODOO_API_KEY`,
 `ODOO_DB`), then a `.env` at or above the working directory, then the per-user
 `~/.config/hodoo/env` (what the installed binary uses anywhere; hodoo warns
-unless it is `chmod 600`). `.env` is
+unless it is `chmod 600`). `hodoo config url|api-key` writes that per-user file
+through `hodoo::dotenv::set` (in place, other lines kept, 0600), which is what a
+fresh install is told to run. A `.env` is
 gitignored and read into a map rather than exported: `std::env::set_var` is
 unsafe in edition 2024 and the crate forbids unsafe code. The same layering is
 available to library callers as `Config::from_env()` plus `hodoo::dotenv`. JSON

@@ -67,6 +67,8 @@ or missing name is an error listing the candidates.
 ```
 hodoo whoami                        # who the key is, on which server
 hodoo odoo-version                  # the server's Odoo version; needs no key
+hodoo config url <url>              # save the server, for every directory
+hodoo config api-key <key>          # save the key; `-` reads it from stdin
 
 hodoo project ls [--customer acme] [--mine] [--tag website]
 hodoo project show <project>        # detail block: dates, stages, counts, chatter
@@ -195,3 +197,11 @@ churn because the CLI grew a personality.
 - A name that matches nothing now suggests the command that would list it, per noun: "no
   project stage matches … List what exists with `hodoo project stages ls`". The old wording
   printed `hodoo stage ls`, which the rename above retired.
+- `config url` and `config api-key` exist because the install instructions were the only
+  way to fill `~/.config/hodoo/env`, and a fresh install answered "no server to talk to"
+  at every command until the user worked out what that file was. They need no server (the
+  point: this is how the first key arrives), write through `hodoo::dotenv::set`, which
+  replaces the one line and keeps the rest, and chmod 600 the result. The key can come from
+  stdin so it stays out of the shell's history, and it is never echoed back in a result or
+  a note, because JSON output is often a log. `url` is validated with `Config::new`, the
+  client's own rule, so a saved URL cannot be one that fails the first time it is used.

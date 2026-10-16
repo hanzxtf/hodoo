@@ -47,6 +47,10 @@ just run -- task ls --project acme
 export ODOO_URL=https://odoo.example.com
 export ODOO_API_KEY=...
 
+# Installed? Save them once instead, and every directory works afterwards:
+hodoo config url https://odoo.example.com
+hodoo config api-key <the key Odoo showed you>
+
 hodoo version                       # this client's version, same as --version
 hodoo odoo-version                  # the server's Odoo version; needs no key at all
 hodoo whoami                        # proves url, certificate and key in one call
@@ -120,6 +124,9 @@ invocation was wrong (bad flag, unknown reference, a delete without confirmation
 - **`-n`/`--dry-run` shows what would be sent and sends nothing**, including for
   `project create --template`.
 - **`-q`/`--quiet`** drops the confirmations and hints, keeping the data.
+- **`hodoo config url|api-key` saves credentials for later runs**, so an installed
+  binary needs no shell export: it writes `~/.config/hodoo/env`, keeps the lines already
+  there, makes the file private, and never echoes the key back.
 - **`-v`/`--verbose`** adds Odoo's Python traceback on failure.
 - **`hodoo help <command>`** and `--help` on anything explain that command, with
   examples; `--help` also lists the credential order and the exit codes.
@@ -141,9 +148,22 @@ Configuration resolves in this order, first hit wins:
 
 ### Installed: credentials for every directory
 
-A `.env` only covers the directory it sits in. For the installed binary, put the
-credentials in the per-user file, readable by you alone (hodoo warns if anyone else
-can read it, as `ssh` does for a key):
+A `.env` only covers the directory it sits in. For the installed binary, save the
+credentials once in the per-user file:
+
+```sh
+hodoo config url https://odoo.example.com
+hodoo config api-key c8b1d0f4...   # Preferences > Account Security > New API Key
+hodoo whoami                       # from anywhere
+```
+
+`hodoo config api-key -` reads the key from stdin, which keeps it out of the shell's
+history: `pass show odoo/api-key | hodoo config api-key -`. Both commands write
+`~/.config/hodoo/env` (`$XDG_CONFIG_HOME/hodoo/env`), keep the lines they find there,
+and make the file readable by you alone; `-n` shows what they would write.
+
+Writing the same file by hand works too, readable by you alone (hodoo warns if anyone
+else can read it, as `ssh` does for a key):
 
 ```sh
 mkdir -p ~/.config/hodoo
